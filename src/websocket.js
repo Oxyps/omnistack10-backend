@@ -3,34 +3,55 @@ const parseStringAsArray = require('./utils/parseStringAsArray');
 const calculateDistance = require('./utils/calculateDistance');
 
 let io;
-const connections = [];
+const mobileConnections = [];
+const webConnections = [];
 
-exports.setupWebSocket = (server) => {
+exports.setupWebSocket = server => {
     io = socketio(server);
 
     io.on('connection', socket => {
-        const { longitude, latitude, techs } = socket.handshake.query;
+        const { isWeb, longitude, latitude, techs } = socket.handshake.query;
 
-        connections.push({
-            id: socket.id,
-            coordinates: {
-                longitude: Number(longitude),
-                latitude: Number(latitude)
-            },
-            techs: parseStringAsArray(techs)
+        if(isWeb) {
+            webConnections.push({ id: socket.id });
+            console.log(webConnections);
+        } else {
+            mobileConnections.push({
+                id: socket.id,
+                coordinates: {
+                    longitude: Number(longitude),
+                    latitude: Number(latitude)
+                },
+                techs: parseStringAsArray(techs)
+            });
+        }
+        
+        socket.on('disconnect', () => {
+            const socketIdWeb = webConnections.indexOf(socket.id);
+            webConnections.splice(socketIdWeb, 1);
+
+            const socketIdMobile = mobileConnections.indexOf(socket.id);
+            webConnections.splice(socketIdMobile, 1);
         });
     });
 };
 
-exports.findConnections = (coordinates, techs) => {
-    return connections.filter(connection => {
+exports.findConnectionsNewDevAround = (coordinates, techs) => {
+    return mobileConnections.filter(connection => {
         return calculateDistance(coordinates, connection.coordinates) < 10
-            && connection.techs.some(item => techs.includes(item))
+            && mobileConnections.techs.some(item => techs.includes(item))
     })
 };
 
-exports.sendMessage = (to, message, data) => {
+exports.sendMessageNewDevAround = (to, message, data) => {
     to.forEach(connection => {
         io.to(connection.id).emit(message, data);
+    });
+}
+
+exports.sendMessageNewDev = (data) => {
+    //enviar para todos clientes web => não enviar para clientes mobile
+    webConnections.forEach( connection => {
+        io.to(connection.id).emit('new-dev', data);
     });
 }
